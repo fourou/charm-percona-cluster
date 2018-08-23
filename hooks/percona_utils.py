@@ -217,6 +217,7 @@ def is_sufficient_peers():
             "this is not a single unit deployment.", level=WARNING)
         return True
 
+
 def get_cluster_hosts():
     """Get the bootstrapped cluster peers
 

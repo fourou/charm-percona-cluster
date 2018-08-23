@@ -31,6 +31,10 @@ TO_PATCH = ['log', 'config',
             'is_clustered',
             'get_ipv6_addr',
             'get_hacluster_config',
+            'get_cluster_hosts',
+            'get_cluster_host_ip',
+            'get_hostname',
+            'resolve_cnf_file',
             'update_dns_ha_resource_params',
             'sst_password',
             'seeded',
@@ -112,6 +116,22 @@ class TestHARelation(CharmTestCase):
         CharmTestCase.setUp(self, hooks, TO_PATCH)
         self.network_get_primary_address.side_effect = NotImplementedError
         self.sst_password.return_value = 'ubuntu'
+        self.get_cluster_hosts.return_value = []
+        self.get_cluster_host_ip.return_value = None
+        self.get_hostname.return_value = ""
+        self.resolve_cnf_file.return_value = ""
+        self.resource_percona_params = \
+            (' params '
+             ' wsrep_cluster_address="gcomm://"'
+             ' config=""'
+             ' datadir="/var/lib/percona-xtradb-cluster"'
+             ' socket="/var/run/mysqld/mysqld.sock" '
+             ' pid="/var/run/mysqld/mysqld.pid"'
+             ' check_user=sstuser check_passwd="' + 'ubuntu' + '"'
+             ' binary="/usr/bin/mysqld_safe"'
+             ' op monitor timeout=120 interval=20 depth=0'
+             ' op monitor role=Master timeout=120 interval=10 depth=0'
+             ' op monitor role=Slave timeout=120 interval=30 depth=0')
 
     def test_resources(self):
         self.relation_ids.return_value = ['ha:1']
@@ -136,26 +156,25 @@ class TestHARelation(CharmTestCase):
         hooks.ha_relation_joined()
 
         resources = {'res_mysql_vip': 'ocf:heartbeat:IPaddr2',
-                     'res_mysql_monitor': 'ocf:percona:mysql_monitor'}
+                     'res_percona': 'ocf:percona:percona_ra'}
         resource_params = {'res_mysql_vip': ('params ip="10.0.3.3" '
                                              'cidr_netmask="24" '
                                              'nic="eth0"'),
-                           'res_mysql_monitor':
-                           hooks.RES_MONITOR_PARAMS % {'sstpass': 'ubuntu'}}
+                           'res_percona': self.resource_percona_params}
+
+        resource_ms = {'ms_percona': ('res_percona meta notify=true '
+                                      'interleave=true master-max=3 '
+                                      'ordered=true target-role=Started')}
+
         groups = {'grp_percona_cluster': 'res_mysql_vip'}
-
-        clones = {'cl_mysql_monitor': 'res_mysql_monitor meta interleave=true'}
-
-        colocations = {'colo_percona_cluster': 'inf: grp_percona_cluster cl_mysql_monitor'}  # noqa
-
-        locations = {'loc_percona_cluster':
-                     'grp_percona_cluster rule inf: writable eq 1'}
+        colocations = {'colo_percona_cluster':
+                       '+inf: grp_percona_cluster ms_percona:Master'}
 
         self.relation_set.assert_called_with(
             relation_id='ha:1', corosync_bindiface=f('ha-bindiface'),
             corosync_mcastport=f('ha-mcastport'), resources=resources,
-            resource_params=resource_params, groups=groups,
-            clones=clones, colocations=colocations, locations=locations)
+            resource_params=resource_params, ms=resource_ms, groups=groups,
+            colocations=colocations)
 
     def test_resource_params_vip_cidr_iface_autodetection(self):
         """
@@ -185,8 +204,7 @@ class TestHARelation(CharmTestCase):
         resource_params = {'res_mysql_vip': ('params ip="10.0.3.3" '
                                              'cidr_netmask="20" '
                                              'nic="eth1"'),
-                           'res_mysql_monitor':
-                           hooks.RES_MONITOR_PARAMS % {'sstpass': 'ubuntu'}}
+                           'res_percona': self.resource_percona_params}
 
         call_args, call_kwargs = self.relation_set.call_args
         self.assertEqual(resource_params, call_kwargs['resource_params'])
@@ -219,8 +237,7 @@ class TestHARelation(CharmTestCase):
         resource_params = {'res_mysql_vip': ('params ip="10.0.3.3" '
                                              'cidr_netmask="16" '
                                              'nic="eth1"'),
-                           'res_mysql_monitor':
-                           hooks.RES_MONITOR_PARAMS % {'sstpass': 'ubuntu'}}
+                           'res_percona': self.resource_percona_params}
 
         call_args, call_kwargs = self.relation_set.call_args
         self.assertEqual(resource_params, call_kwargs['resource_params'])

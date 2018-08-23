@@ -120,14 +120,6 @@ from charmhelpers.core.unitdata import kv
 
 hooks = Hooks()
 
-RES_MONITOR_PARAMS = ('params user="sstuser" password="%(sstpass)s" '
-                      'pid="/var/run/mysqld/mysqld.pid" '
-                      'socket="/var/run/mysqld/mysqld.sock" '
-                      'max_slave_lag="5" '
-                      'cluster_type="pxc" '
-                      'op monitor interval="1s" timeout="30s" '
-                      'OCF_CHECK_LEVEL="1"')
-
 INITIAL_CLIENT_UPDATE_KEY = 'initial_client_update_done'
 
 
@@ -742,22 +734,17 @@ def ha_relation_joined(relation_id=None):
     sstpsswd = sst_password()
     resources = {}
     resource_params = {}
-    # resources = {'res_mysql_monitor': 'ocf:percona:mysql_monitor'}
-    # resource_params = {'res_mysql_monitor':
-    #                    RES_MONITOR_PARAMS % {'sstpass': sstpsswd}}
-    #
-    # if config('dns-ha'):
-    #     update_dns_ha_resource_params(relation_id=relation_id,
-    #                                   resources=resources,
-    #                                   resource_params=resource_params)
-    #     group_name = 'grp_{}_hostnames'.format(charm_name())
-    #     groups = {group_name: 'res_{}_access_hostname'.format(charm_name())}
-
-    # else:
     vip_iface = (get_iface_for_address(cluster_config['vip']) or
                  config('vip_iface'))
     vip_cidr = (get_netmask_for_address(cluster_config['vip']) or
                 config('vip_cidr'))
+
+    if config('dns-ha'):
+        update_dns_ha_resource_params(relation_id=relation_id,
+                                      resources=resources,
+                                      resource_params=resource_params)
+        group_name = 'grp_{}_hostnames'.format(charm_name())
+        groups = {group_name: 'res_{}_access_hostname'.format(charm_name())}
 
     if config('prefer-ipv6'):
         res_mysql_vip = 'ocf:heartbeat:IPv6addr'
@@ -767,43 +754,39 @@ def ha_relation_joined(relation_id=None):
         res_mysql_vip = 'ocf:heartbeat:IPaddr2'
         vip_params = 'params ip="%s" cidr_netmask="%s" nic="%s"' % \
                      (cluster_config['vip'], vip_cidr, vip_iface)
-        ip_list = get_cluster_hosts()
-        ip_list.append(get_cluster_host_ip())
-        hostname_list = [get_hostname(ip).split('.')[0] for ip in ip_list]
-        percona_params = 'params wsrep_cluster_address="gcomm://' + ",".join(hostname_list) + '"' \
-                         ' config="' + resolve_cnf_file() + '"' \
-                         ' datadir="/var/lib/percona-xtradb-cluster"' \
-                         ' socket="/var/run/mysqld/mysqld.sock" pid="/var/run/mysqld/mysqld.pid"' \
-                         ' check_user=sstuser check_passwd="' + sstpsswd + '"' \
-                         ' binary="/usr/bin/mysqld_safe"' \
-                         ' op monitor timeout=120 interval=20 depth=0' \
-	                     ' op monitor role=Master timeout=120 interval=10 depth=0' \
-	                     ' op monitor role=Slave timeout=120 interval=30 depth=0'
+    ip_list = get_cluster_hosts()
+    ip_list.append(get_cluster_host_ip())
+    hostname_list = [get_hostname(ip).split('.')[0] for ip in ip_list]
+    percona_params = \
+        ' params ' \
+        ' wsrep_cluster_address="gcomm://' + ",".join(hostname_list) + '"' \
+        ' config="' + resolve_cnf_file() + '"' \
+        ' datadir="/var/lib/percona-xtradb-cluster"' \
+        ' socket="/var/run/mysqld/mysqld.sock" ' \
+        ' pid="/var/run/mysqld/mysqld.pid"' \
+        ' check_user=sstuser check_passwd="' + sstpsswd + '"' \
+        ' binary="/usr/bin/mysqld_safe"' \
+        ' op monitor timeout=120 interval=20 depth=0' \
+        ' op monitor role=Master timeout=120 interval=10 depth=0' \
+        ' op monitor role=Slave timeout=120 interval=30 depth=0'
 
-        percona_ms = {}
-        percona_ms['ms_percona'] = 'res_percona meta notify=true interleave=true master-max=3 ' \
-                                   'ordered=true target-role=Started'
+    percona_ms = {}
+    percona_ms['ms_percona'] = 'res_percona meta notify=true ' \
+                               'interleave=true master-max=3 ' \
+                               'ordered=true target-role=Started'
 
-        for ip in ip_list:
-            log("TEEEEEEEEESSSSST %s" %(get_hostname(ip)), INFO)
-        resources['res_percona'] = 'ocf:percona:percona_ra'
-        resource_params['res_percona'] = percona_params
+    resources['res_percona'] = 'ocf:percona:percona_ra'
+    resource_params['res_percona'] = percona_params
 
-        resources['res_mysql_vip'] = res_mysql_vip
+    resources['res_mysql_vip'] = res_mysql_vip
 
-        resource_params['res_mysql_vip'] = vip_params
+    resource_params['res_mysql_vip'] = vip_params
 
-        # group_name = 'grp_percona_cluster'
-        # groups = {group_name: 'res_mysql_vip'}
+    group_name = 'grp_percona_cluster'
+    groups = {group_name: 'res_mysql_vip'}
 
-    # clones = {'cl_mysql_monitor': 'res_mysql_monitor meta interleave=true'}
-
-    # colocations = {'colo_percona_cluster': 'inf: {} cl_mysql_monitor'
-    #                                        ''.format(group_name)}
-
-    # locations = {'loc_percona_cluster':
-    #              '{} rule inf: writable eq 1'
-    #              ''.format(group_name)}
+    colocations = {'colo_percona_cluster':
+                   '+inf: grp_percona_cluster ms_percona:Master'}
 
     for rel_id in relation_ids('ha'):
         relation_set(relation_id=rel_id,
@@ -811,11 +794,9 @@ def ha_relation_joined(relation_id=None):
                      corosync_mcastport=cluster_config['ha-mcastport'],
                      resources=resources,
                      resource_params=resource_params,
-                     ms=percona_ms)
-                     # groups=groups,
-                     # clones=clones,
-                     # colocations=colocations,
-                     # locations=locations)
+                     ms=percona_ms,
+                     groups=groups,
+                     colocations=colocations)
 
 
 @hooks.hook('ha-relation-changed')
