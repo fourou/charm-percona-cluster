@@ -31,9 +31,7 @@ TO_PATCH = ['log', 'config',
             'is_clustered',
             'get_ipv6_addr',
             'get_hacluster_config',
-            'get_cluster_hosts',
-            'get_cluster_host_ip',
-            'get_hostname',
+            'get_cluster_hostnames',
             'resolve_cnf_file',
             'update_dns_ha_resource_params',
             'sst_password',
@@ -116,9 +114,7 @@ class TestHARelation(CharmTestCase):
         CharmTestCase.setUp(self, hooks, TO_PATCH)
         self.network_get_primary_address.side_effect = NotImplementedError
         self.sst_password.return_value = 'ubuntu'
-        self.get_cluster_hosts.return_value = []
-        self.get_cluster_host_ip.return_value = None
-        self.get_hostname.return_value = ""
+        self.get_cluster_hostnames.return_value = [""]
         self.resolve_cnf_file.return_value = ""
         self.resource_percona_params = \
             (' params '
@@ -156,7 +152,7 @@ class TestHARelation(CharmTestCase):
         hooks.ha_relation_joined()
 
         resources = {'res_mysql_vip': 'ocf:heartbeat:IPaddr2',
-                     'res_percona': 'ocf:percona:percona_ra'}
+                     'res_percona': 'ocf:heartbeat:galera'}
         resource_params = {'res_mysql_vip': ('params ip="10.0.3.3" '
                                              'cidr_netmask="24" '
                                              'nic="eth0"'),

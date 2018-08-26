@@ -63,7 +63,6 @@ from charmhelpers.contrib.network.ip import (
     is_address_in_network,
     resolve_network_cidr,
     get_relation_ip,
-    get_hostname,
 )
 from charmhelpers.contrib.charmsupport import nrpe
 from charmhelpers.contrib.hardening.harden import harden
@@ -114,6 +113,7 @@ from percona_utils import (
     get_server_id,
     is_sufficient_peers,
     set_ready_on_peers,
+    get_cluster_hostnames,
 )
 
 from charmhelpers.core.unitdata import kv
@@ -732,7 +732,7 @@ def shared_db_changed(relation_id=None, unit=None):
 def ha_relation_joined(relation_id=None):
     cluster_config = get_hacluster_config()
     sstpsswd = sst_password()
-    resources = {}
+    resources = {'res_percona': 'ocf:heartbeat:galera'}
     resource_params = {}
     vip_iface = (get_iface_for_address(cluster_config['vip']) or
                  config('vip_iface'))
@@ -754,9 +754,8 @@ def ha_relation_joined(relation_id=None):
         res_mysql_vip = 'ocf:heartbeat:IPaddr2'
         vip_params = 'params ip="%s" cidr_netmask="%s" nic="%s"' % \
                      (cluster_config['vip'], vip_cidr, vip_iface)
-    ip_list = get_cluster_hosts()
-    ip_list.append(get_cluster_host_ip())
-    hostname_list = [get_hostname(ip).split('.')[0] for ip in ip_list]
+
+    hostname_list = get_cluster_hostnames()
     percona_params = \
         ' params ' \
         ' wsrep_cluster_address="gcomm://' + ",".join(hostname_list) + '"' \
@@ -770,20 +769,17 @@ def ha_relation_joined(relation_id=None):
         ' op monitor role=Master timeout=120 interval=10 depth=0' \
         ' op monitor role=Slave timeout=120 interval=30 depth=0'
 
-    percona_ms = {}
-    percona_ms['ms_percona'] = 'res_percona meta notify=true ' \
-                               'interleave=true master-max=3 ' \
-                               'ordered=true target-role=Started'
+    percona_ms = {'ms_percona': 'res_percona meta notify=true '
+                                'interleave=true master-max=3 '
+                                'ordered=true target-role=Started'}
 
-    resources['res_percona'] = 'ocf:percona:percona_ra'
     resource_params['res_percona'] = percona_params
 
     resources['res_mysql_vip'] = res_mysql_vip
 
     resource_params['res_mysql_vip'] = vip_params
 
-    group_name = 'grp_percona_cluster'
-    groups = {group_name: 'res_mysql_vip'}
+    groups = {'grp_percona_cluster': 'res_mysql_vip'}
 
     colocations = {'colo_percona_cluster':
                    '+inf: grp_percona_cluster ms_percona:Master'}

@@ -50,6 +50,7 @@ from charmhelpers.contrib.network.ip import (
     get_ipv6_addr,
     is_ip,
     is_ipv6,
+    get_hostname,
 )
 from charmhelpers.contrib.database.mysql import (
     MySQLHelper,
@@ -292,6 +293,15 @@ SQL_SST_USER_SETUP = ("GRANT {permissions} ON *.* "
 SQL_SST_USER_SETUP_IPV6 = ("GRANT {permissions} "
                            "ON *.* TO 'sstuser'@'ip6-localhost' IDENTIFIED "
                            "BY '{password}'")
+
+
+def get_cluster_hostnames():
+    """ Return list of all hostnames in the cluster. Essential for
+    glaera resource agent used for percona clustering
+    """
+    ip_list = get_cluster_hosts()
+    ip_list.append(get_cluster_host_ip())
+    return [get_hostname(ip).split('.')[0] for ip in ip_list]
 
 
 def get_db_helper():
